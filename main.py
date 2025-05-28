@@ -43,21 +43,30 @@ if __name__ == "__main__":
     # for p in props:
     #     print(vars(p))
 
-    # Record a sale
-    sale = Sale(
-        id=None,
-        property_id=1,     # make sure this property exists and isn't sold yet
-        client_id=1,
-        broker_id=1,
-        date=datetime.date.today().isoformat(),
-        final_price=4750000.00
-    )
-    sale_id = add_sale(sale)
+    # # Record a sale
+    # sale = Sale(
+    #     id=None,
+    #     property_id=1,     # make sure this property exists and isn't sold yet
+    #     client_id=1,
+    #     broker_id=1,
+    #     date=datetime.date.today().isoformat(),
+    #     final_price=4750000.00
+    # )
+    # sale_id = add_sale(sale)
 
-    # Verify sales
-    sales = get_all_sales()
-    for s in sales:
-        print(vars(s))
+    # # Verify sales
+    # sales = get_all_sales()
+    # for s in sales:
+    #     print(vars(s))
+    # Add a broker
+    b = Broker(None, "Adel Nabih", 8)
+    add_broker(b)
+    # Fetch and print all brokers
+    all_brokers = get_all_brokers()
+    for broker in all_brokers:
+        print(vars(broker))
+    # Add a client
+    
 
 
 
