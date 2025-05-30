@@ -124,8 +124,8 @@ class BasePanel(ttk.Frame):
         # Create table
         self.create_table()
         
-        # Create buttons frame
-        self.create_buttons()
+        # Create buttons frame (Call this before create_form, as it was)
+        self.create_buttons() 
         
         # Create form frame
         self.create_form()
@@ -151,8 +151,8 @@ class BasePanel(ttk.Frame):
     
     def create_buttons(self):
         self.button_frame = ttk.Frame(self.main_frame)
-        self.button_frame.pack(fill="x", pady=(0, 10))
-        
+        # We will pack this conditionally later
+
         self.add_btn = ttk.Button(
             self.button_frame,
             text="Add",
@@ -185,15 +185,13 @@ class BasePanel(ttk.Frame):
         )
         self.refresh_btn.pack(side="right", padx=5)
 
-        # --- Role-based Button Permissions ---
-        # Clients cannot perform any CRUD operations on any panel
+        # --- Role-based Button Permissions & Visibility ---
         if self.role == "Client":
-            self.add_btn.config(state="disabled")
-            self.update_btn.config(state="disabled")
-            self.delete_btn.config(state="disabled")
-        # Brokers and Admins have full CRUD by default on their respective panels
-        # Specific panels (ClientPanel, SalePanel) will have additional checks for Broker role
-        # to restrict actions to their own data.
+            # If the user is a client, hide the entire button_frame
+            self.button_frame.pack_forget() 
+        else:
+            # For Broker/Admin roles, pack the button_frame normally
+            self.button_frame.pack(fill="x", pady=(0, 10))
 
     def create_form(self):
         self.form_frame = ttk.LabelFrame(self.main_frame, text="Details")
@@ -230,6 +228,14 @@ class BasePanel(ttk.Frame):
         Must be overridden by subclasses.
         """
         raise NotImplementedError("Subclasses must implement _populate_form_fields method.")
+    
+    def clear_form(self):
+        """
+        Generic method to clear form fields.
+        Must be overridden by subclasses.
+        """
+        raise NotImplementedError("Subclasses must implement clear_form method.")
+
 
 class ClientPanel(BasePanel):
     def __init__(self, parent, role, user_id):
@@ -258,17 +264,20 @@ class ClientPanel(BasePanel):
         self.create_form_fields()
     
     def create_form_fields(self):
+        # Determine the state for entries based on the role
+        entry_state = "readonly" if self.role == "Client" else "normal"
+
         ttk.Label(self.form_frame, text="Name:").grid(row=0, column=0, padx=5, pady=5)
         self.name_var = tk.StringVar()
-        ttk.Entry(self.form_frame, textvariable=self.name_var).grid(row=0, column=1, padx=5, pady=5)
+        ttk.Entry(self.form_frame, textvariable=self.name_var, state=entry_state).grid(row=0, column=1, padx=5, pady=5)
         
         ttk.Label(self.form_frame, text="Contact:").grid(row=0, column=2, padx=5, pady=5)
         self.contact_var = tk.StringVar()
-        ttk.Entry(self.form_frame, textvariable=self.contact_var).grid(row=0, column=3, padx=5, pady=5)
+        ttk.Entry(self.form_frame, textvariable=self.contact_var, state=entry_state).grid(row=0, column=3, padx=5, pady=5)
         
         ttk.Label(self.form_frame, text="Preferences:").grid(row=1, column=0, padx=5, pady=5)
         self.preferences_var = tk.StringVar()
-        ttk.Entry(self.form_frame, textvariable=self.preferences_var).grid(row=1, column=1, columnspan=3, sticky="ew", padx=5, pady=5)
+        ttk.Entry(self.form_frame, textvariable=self.preferences_var, state=entry_state).grid(row=1, column=1, columnspan=3, sticky="ew", padx=5, pady=5)
         
         ttk.Label(self.form_frame, text="Broker ID:").grid(row=2, column=0, padx=5, pady=5)
         self.broker_id_var = tk.StringVar()
@@ -276,9 +285,13 @@ class ClientPanel(BasePanel):
         self.broker_id_entry = ttk.Entry(self.form_frame, textvariable=self.broker_id_var)
         self.broker_id_entry.grid(row=2, column=1, padx=5, pady=5)
         
-        # Disable broker_id entry for brokers
+        # Special handling for broker_id_entry: readonly for Broker role, otherwise normal
         if self.role == "Broker":
             self.broker_id_entry.config(state="readonly")
+        elif self.role == "Client":
+            self.broker_id_entry.config(state="readonly")
+        else: # Admin
+            self.broker_id_entry.config(state="normal")
 
 
     def refresh_data(self):
@@ -289,7 +302,7 @@ class ClientPanel(BasePanel):
             # Broker sees only their clients
             clients = get_clients_by_broker_id(self.user_id) # Use the broker's ID
         else:
-            # Admin sees all clients (Client role won't see this tab)
+            # Admin sees all clients (Client role won't see this tab, but properties will)
             clients = get_all_clients() 
             
         for client in clients:
@@ -384,13 +397,24 @@ class ClientPanel(BasePanel):
         self.name_var.set("")
         self.contact_var.set("")
         self.preferences_var.set("")
+        
         # For broker, pre-fill their ID and keep it read-only
         if self.role == "Broker":
             self.broker_id_var.set(str(self.user_id))
             self.broker_id_entry.config(state="readonly") 
-        else:
+        elif self.role == "Client":
+            self.broker_id_var.set("") # Clear it but keep readonly
+            self.broker_id_entry.config(state="readonly")
+        else: # Admin
             self.broker_id_var.set("")
             self.broker_id_entry.config(state="normal") # Enable for admin
+        
+        # Re-apply state to other fields after clearing (no need for trace workaround)
+        current_state = "readonly" if self.role == "Client" else "normal"
+        self.name_var.set(self.name_var.get()) # Trigger update without changing value
+        self.contact_var.set(self.contact_var.get())
+        self.preferences_var.set(self.preferences_var.get())
+
 
     def _populate_form_fields(self, values):
         """Populates the Client form fields from selected treeview values."""
@@ -403,8 +427,16 @@ class ClientPanel(BasePanel):
             # Ensure broker_id entry state is correct on populate
             if self.role == "Broker":
                 self.broker_id_entry.config(state="readonly")
+            elif self.role == "Client":
+                self.broker_id_entry.config(state="readonly")
             else:
                 self.broker_id_entry.config(state="normal")
+            
+            # Re-apply state to other fields after populating (no need for trace workaround)
+            current_state = "readonly" if self.role == "Client" else "normal"
+            self.name_var.set(self.name_var.get()) # Trigger update without changing value
+            self.contact_var.set(self.contact_var.get())
+            self.preferences_var.set(self.preferences_var.get())
 
 
 class BrokerPanel(BasePanel):
@@ -426,13 +458,17 @@ class BrokerPanel(BasePanel):
         self.create_form_fields()
     
     def create_form_fields(self):
+        # Broker Panel is hidden for Client role, so no special handling needed here for client.
+        # It's only accessible by Admin.
+        entry_state = "normal" # Default to normal for Admin
+
         ttk.Label(self.form_frame, text="Name:").grid(row=0, column=0, padx=5, pady=5)
         self.name_var = tk.StringVar()
-        ttk.Entry(self.form_frame, textvariable=self.name_var).grid(row=0, column=1, padx=5, pady=5)
+        ttk.Entry(self.form_frame, textvariable=self.name_var, state=entry_state).grid(row=0, column=1, padx=5, pady=5)
         
         ttk.Label(self.form_frame, text="Years Experience:").grid(row=0, column=2, padx=5, pady=5)
         self.years_experience_var = tk.StringVar()
-        ttk.Entry(self.form_frame, textvariable=self.years_experience_var).grid(row=0, column=3, padx=5, pady=5)
+        ttk.Entry(self.form_frame, textvariable=self.years_experience_var, state=entry_state).grid(row=0, column=3, padx=5, pady=5)
     
     def refresh_data(self):
         for item in self.tree.get_children():
@@ -500,6 +536,9 @@ class BrokerPanel(BasePanel):
     def clear_form(self):
         self.name_var.set("")
         self.years_experience_var.set("")
+        # Re-apply state to other fields after clearing (no need for trace workaround)
+        self.name_var.set(self.name_var.get())
+        self.years_experience_var.set(self.years_experience_var.get())
 
     def _populate_form_fields(self, values):
         """Populates the Broker form fields from selected treeview values."""
@@ -507,6 +546,9 @@ class BrokerPanel(BasePanel):
         if len(values) >= 3:
             self.name_var.set(values[1])
             self.years_experience_var.set(values[2])
+            # Re-apply state to other fields after populating (no need for trace workaround)
+            self.name_var.set(self.name_var.get())
+            self.years_experience_var.set(self.years_experience_var.get())
 
 class PropertyPanel(BasePanel):
     def __init__(self, parent, role, user_id):
@@ -526,36 +568,41 @@ class PropertyPanel(BasePanel):
         self.tree.heading("id", text="ID")
         self.tree.heading("location", text="Location")
         self.tree.heading("type", text="Type") 
-        self.tree.heading("size", text="Size (sqft)")
+        self.tree.heading("size", text="Size (sqm)")
         self.tree.heading("price", text="Price")
         self.tree.heading("status", text="Status")
         
         self.create_form_fields()
     
     def create_form_fields(self):
+        # Determine the state for entries and comboboxes based on the role
+        entry_state = "readonly" if self.role == "Client" else "normal"
+        # Comboboxes are usually readonly anyway, but explicitly set for Client
+        combobox_state = "readonly" if self.role == "Client" else "readonly" 
+
         ttk.Label(self.form_frame, text="Location:").grid(row=0, column=0, padx=5, pady=5)
         self.location_var = tk.StringVar()
-        ttk.Entry(self.form_frame, textvariable=self.location_var).grid(row=0, column=1, padx=5, pady=5)
+        ttk.Entry(self.form_frame, textvariable=self.location_var, state=entry_state).grid(row=0, column=1, padx=5, pady=5)
         
         ttk.Label(self.form_frame, text="Type:").grid(row=0, column=2, padx=5, pady=5)
         self.type_var = tk.StringVar()
         property_types = ['house', 'apartment', 'land', 'commercial'] 
-        self.type_combobox = ttk.Combobox(self.form_frame, textvariable=self.type_var, values=property_types, state="readonly")
+        self.type_combobox = ttk.Combobox(self.form_frame, textvariable=self.type_var, values=property_types, state=combobox_state)
         self.type_combobox.grid(row=0, column=3, padx=5, pady=5)
         self.type_combobox.set('house') 
 
         ttk.Label(self.form_frame, text="Size:").grid(row=1, column=0, padx=5, pady=5)
         self.size_var = tk.StringVar()
-        ttk.Entry(self.form_frame, textvariable=self.size_var).grid(row=1, column=1, padx=5, pady=5)
+        ttk.Entry(self.form_frame, textvariable=self.size_var, state=entry_state).grid(row=1, column=1, padx=5, pady=5)
         
         ttk.Label(self.form_frame, text="Price:").grid(row=1, column=2, padx=5, pady=5)
         self.price_var = tk.StringVar()
-        ttk.Entry(self.form_frame, textvariable=self.price_var).grid(row=1, column=3, padx=5, pady=5)
+        ttk.Entry(self.form_frame, textvariable=self.price_var, state=entry_state).grid(row=1, column=3, padx=5, pady=5)
         
         ttk.Label(self.form_frame, text="Status:").grid(row=2, column=0, padx=5, pady=5)
         self.status_var = tk.StringVar()
         statuses = ['available', 'sold'] 
-        self.status_combobox = ttk.Combobox(self.form_frame, textvariable=self.status_var, values=statuses, state="readonly")
+        self.status_combobox = ttk.Combobox(self.form_frame, textvariable=self.status_var, values=statuses, state=combobox_state)
         self.status_combobox.grid(row=2, column=1, padx=5, pady=5)
         self.status_combobox.set('available') 
     
@@ -640,6 +687,18 @@ class PropertyPanel(BasePanel):
         self.size_var.set("")
         self.price_var.set("")
         self.status_var.set("available") 
+        
+        # Re-apply state to entries and comboboxes after clearing
+        current_entry_state = "readonly" if self.role == "Client" else "normal"
+        current_combobox_state = "readonly" if self.role == "Client" else "readonly"
+
+        self.location_var.set(self.location_var.get())
+        self.size_var.set(self.size_var.get())
+        self.price_var.set(self.price_var.get())
+        
+        self.type_combobox.config(state=current_combobox_state)
+        self.status_combobox.config(state=current_combobox_state)
+
 
     def _populate_form_fields(self, values):
         """Populates the Property form fields from selected treeview values."""
@@ -657,6 +716,18 @@ class PropertyPanel(BasePanel):
             
             self.status_var.set(values[5]) 
 
+            # Ensure states are correct after populating
+            current_entry_state = "readonly" if self.role == "Client" else "normal"
+            current_combobox_state = "readonly" if self.role == "Client" else "readonly"
+            
+            self.location_var.set(self.location_var.get())
+            self.size_var.set(self.size_var.get())
+            self.price_var.set(self.price_var.get())
+            
+            self.type_combobox.config(state=current_combobox_state)
+            self.status_combobox.config(state=current_combobox_state)
+            
+
 class SalePanel(BasePanel):
     def __init__(self, parent, role, user_id):
         super().__init__(parent, role, user_id)
@@ -667,6 +738,11 @@ class SalePanel(BasePanel):
             # self.broker_id_entry.config(state="readonly") # Uncomment if you have an entry reference
 
     def setup_sale_ui(self):
+        # Determine the state for entries based on the role
+        # Sale Panel is hidden for Client role, so no special handling needed here for client.
+        # It's only accessible by Admin and Broker.
+        entry_state = "normal" 
+
         self.tree["columns"] = ("id", "property_id", "client_id", "broker_id", "date", "final_price")
         self.tree.column("#0", width=0, stretch="no")
         self.tree.column("id", width=50)
@@ -686,13 +762,16 @@ class SalePanel(BasePanel):
         self.create_form_fields()
     
     def create_form_fields(self):
+        # Determine the state for entries based on the role
+        entry_state = "readonly" if self.role == "Client" else "normal" # SalePanel is hidden for client, but for completeness
+
         ttk.Label(self.form_frame, text="Property ID:").grid(row=0, column=0, padx=5, pady=5)
         self.property_id_var = tk.StringVar()
-        ttk.Entry(self.form_frame, textvariable=self.property_id_var).grid(row=0, column=1, padx=5, pady=5)
+        ttk.Entry(self.form_frame, textvariable=self.property_id_var, state=entry_state).grid(row=0, column=1, padx=5, pady=5)
         
         ttk.Label(self.form_frame, text="Client ID:").grid(row=0, column=2, padx=5, pady=5)
         self.client_id_var = tk.StringVar()
-        ttk.Entry(self.form_frame, textvariable=self.client_id_var).grid(row=0, column=3, padx=5, pady=5)
+        ttk.Entry(self.form_frame, textvariable=self.client_id_var, state=entry_state).grid(row=0, column=3, padx=5, pady=5)
         
         ttk.Label(self.form_frame, text="Broker ID:").grid(row=1, column=0, padx=5, pady=5)
         self.broker_id_var = tk.StringVar()
@@ -700,17 +779,21 @@ class SalePanel(BasePanel):
         self.broker_id_entry = ttk.Entry(self.form_frame, textvariable=self.broker_id_var)
         self.broker_id_entry.grid(row=1, column=1, padx=5, pady=5)
 
-        # Disable broker_id entry for brokers
+        # Special handling for broker_id_entry: readonly for Broker role, otherwise normal
         if self.role == "Broker":
             self.broker_id_entry.config(state="readonly")
+        elif self.role == "Client":
+            self.broker_id_entry.config(state="readonly")
+        else: # Admin
+            self.broker_id_entry.config(state="normal")
         
         ttk.Label(self.form_frame, text="Sale Date (YYYY-MM-DD):").grid(row=1, column=2, padx=5, pady=5)
         self.date_var = tk.StringVar()
-        ttk.Entry(self.form_frame, textvariable=self.date_var).grid(row=1, column=3, padx=5, pady=5)
+        ttk.Entry(self.form_frame, textvariable=self.date_var, state=entry_state).grid(row=1, column=3, padx=5, pady=5)
         
         ttk.Label(self.form_frame, text="Final Price:").grid(row=2, column=0, padx=5, pady=5)
         self.final_price_var = tk.StringVar()
-        ttk.Entry(self.form_frame, textvariable=self.final_price_var).grid(row=2, column=1, padx=5, pady=5)
+        ttk.Entry(self.form_frame, textvariable=self.final_price_var, state=entry_state).grid(row=2, column=1, padx=5, pady=5)
     
     def refresh_data(self):
         for item in self.tree.get_children():
@@ -780,7 +863,7 @@ class SalePanel(BasePanel):
             self.clear_form()
             messagebox.showinfo("Success", "Sale added successfully!")
         except ValueError:
-            messagebox.showerror("Input Error", "Please ensure all ID and Price fields are valid numbers and Date is YYYY-MM-DD.")
+            messagebox.showerror("Input Error", "Please ensure all ID and Price fields are valid numbers and Date is BCE-MM-DD.")
         except Exception as e:
             messagebox.showerror("Error", str(e))
     
@@ -835,7 +918,7 @@ class SalePanel(BasePanel):
             self.clear_form()
             messagebox.showinfo("Success", "Sale updated successfully!")
         except ValueError:
-            messagebox.showerror("Input Error", "Please ensure all ID and Price fields are valid numbers and Date is YYYY-MM-DD.")
+            messagebox.showerror("Input Error", "Please ensure all ID and Price fields are valid numbers and Date is BCE-MM-DD.")
         except Exception as e:
             messagebox.showerror("Error", str(e))
     
@@ -870,6 +953,13 @@ class SalePanel(BasePanel):
         self.date_var.set("")
         self.final_price_var.set("")
 
+        # Re-apply state to entries after clearing (no need for trace workaround)
+        current_entry_state = "readonly" if self.role == "Client" else "normal"
+        self.property_id_var.set(self.property_id_var.get())
+        self.client_id_var.set(self.client_id_var.get())
+        self.date_var.set(self.date_var.get())
+        self.final_price_var.set(self.final_price_var.get())
+
     def _populate_form_fields(self, values):
         """Populates the Sale form fields from selected treeview values."""
         # values: (id, property_id, client_id, broker_id, date, final_price)
@@ -892,3 +982,10 @@ class SalePanel(BasePanel):
                 self.broker_id_entry.config(state="readonly")
             else:
                 self.broker_id_entry.config(state="normal")
+            
+            # Re-apply state to other fields after populating (no need for trace workaround)
+            current_entry_state = "readonly" if self.role == "Client" else "normal"
+            self.property_id_var.set(self.property_id_var.get())
+            self.client_id_var.set(self.client_id_var.get())
+            self.date_var.set(self.date_var.get())
+            self.final_price_var.set(self.final_price_var.get())
