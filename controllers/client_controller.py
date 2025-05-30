@@ -1,4 +1,5 @@
 from utils.db_helper import execute_query
+from config.db_config import get_connection 
 from models.client import Client
 
 def add_client(client: Client):
@@ -31,8 +32,8 @@ def get_client_by_id(client_id):
         LEFT JOIN brokers b ON c.broker_id = b.id 
         WHERE c.id = %s
     """
-    row = execute_query(query, (client_id,), fetch=True, fetch_one=True)
-    return Client.from_dict(row) if row else None
+    rows = execute_query(query, (client_id,), fetch=True)
+    return Client.from_dict(rows[0]) if rows else None
 
 def update_client(client: Client):
     query = """
@@ -69,3 +70,9 @@ def get_client_sales(client_id):
     """
     rows = execute_query(query, (client_id,), fetch=True)
     return rows
+
+def get_clients_by_broker_id(broker_id):
+    """Fetches clients associated with a specific broker ID."""
+    query = "SELECT * FROM clients WHERE broker_id = %s"
+    rows = execute_query(query, (broker_id,), fetch=True)
+    return [Client.from_dict(row) for row in rows]
