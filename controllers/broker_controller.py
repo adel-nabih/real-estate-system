@@ -16,8 +16,8 @@ def get_all_brokers():
 
 def get_broker_by_id(broker_id):
     query = "SELECT * FROM brokers WHERE id = %s"
-    row = execute_query(query, (broker_id,), fetch=True, fetch_one=True)
-    return Broker.from_dict(row) if row else None
+    rows = execute_query(query, (broker_id,), fetch=True)
+    return Broker.from_dict(rows[0]) if rows else None
 
 def update_broker(broker: Broker):
     query = """

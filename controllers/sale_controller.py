@@ -48,8 +48,8 @@ def get_sale_by_id(sale_id):
         JOIN brokers b ON s.broker_id = b.id
         WHERE s.id = %s
     """
-    row = execute_query(query, (sale_id,), fetch=True, fetch_one=True)
-    return Sale.from_dict(row) if row else None
+    rows = execute_query(query, (sale_id,), fetch=True)
+    return Sale.from_dict(rows[0]) if rows else None
 
 def update_sale(sale: Sale):
     query = """
@@ -109,4 +109,10 @@ def get_sales_by_date_range(start_date, end_date):
         WHERE s.date BETWEEN %s AND %s
     """
     rows = execute_query(query, (start_date, end_date), fetch=True)
+    return rows
+
+def get_sales_by_broker_id(broker_id):
+    """Fetches sales associated with a specific broker ID."""
+    query = "SELECT * FROM sales WHERE broker_id = %s"
+    rows = execute_query(query, (broker_id,), fetch=True)
     return [Sale.from_dict(row) for row in rows]

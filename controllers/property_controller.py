@@ -2,18 +2,18 @@ from utils.db_helper import execute_query
 from models.property import Property
 from config.db_config import get_connection
 
-def add_property(property: Property):
+def add_property(property_obj: Property): # Renamed 'property' to 'property_obj' to avoid keyword conflict
     query = """
         INSERT INTO properties (location, type, size, price, status, broker_id)
         VALUES (%s, %s, %s, %s, %s, %s)
     """
     values = (
-        property.location,
-        property.type,
-        property.size,
-        property.price,
-        property.status,
-        property.broker_id
+        property_obj.location,
+        property_obj.type,
+        property_obj.size,
+        property_obj.price,
+        property_obj.status,
+        property_obj.broker_id
     )
     conn = get_connection()
     cursor = conn.cursor()
@@ -41,23 +41,25 @@ def get_property_by_id(property_id):
         LEFT JOIN brokers b ON p.broker_id = b.id 
         WHERE p.id = %s
     """
-    row = execute_query(query, (property_id,), fetch=True, fetch_one=True)
-    return Property.from_dict(row) if row else None
+    # FIX: Removed fetch_one=True. execute_query with fetch=True returns a list of rows.
+    rows = execute_query(query, (property_id,), fetch=True)
+    # Return the first row if the list is not empty, otherwise None.
+    return Property.from_dict(rows[0]) if rows else None
 
-def update_property(property: Property):
+def update_property(property_obj: Property): # Renamed 'property' to 'property_obj'
     query = """
         UPDATE properties 
         SET location = %s, type = %s, size = %s, price = %s, status = %s, broker_id = %s
         WHERE id = %s
     """
     values = (
-        property.location,
-        property.type,
-        property.size,
-        property.price,
-        property.status,
-        property.broker_id,
-        property.id
+        property_obj.location,
+        property_obj.type,
+        property_obj.size,
+        property_obj.price,
+        property_obj.status,
+        property_obj.broker_id,
+        property_obj.id
     )
     execute_query(query, values)
     return True
